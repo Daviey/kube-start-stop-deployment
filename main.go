@@ -35,13 +35,16 @@ type Controller struct {
 }
 
 func main() {
+	//set up the API
 	kubeClient := GetClientOutOfCluster()
-
-
+	// Create the controller Struct
 	c := newControllerDeployment(kubeClient)
+	//set up a channel so that the goroutine can communicate with the main routine
 	stopCh := make(chan struct{})
+	//Close the channel when the main routine ends
 	defer close(stopCh)
-
+	
+	// run the controller go routine
 	go c.Run(stopCh)
 
 	sigterm := make(chan os.Signal, 1)
@@ -51,13 +54,14 @@ func main() {
 
 }
 
+//init a controller
 func newControllerDeployment(client kubernetes.Interface) *Controller {
+	//Create a queue to store the deployments 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-
+	//create an inform that watches for chanes in deployments
 	informer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options meta_v1.ListOptions) (runtime.Object, error) {
-				return client.ExtensionsV1beta1().Deployments(meta_v1.NamespaceAll).List(options)
 				return client.ExtensionsV1beta1().Deployments(meta_v1.NamespaceAll).List(options)
 			},
 			WatchFunc: func(options meta_v1.ListOptions) (watch.Interface, error) {
@@ -68,7 +72,7 @@ func newControllerDeployment(client kubernetes.Interface) *Controller {
 		0, //Skip resync
 		cache.Indexers{},
 	)
-
+	//create handles if a deployment is added, updated, or deleted
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
@@ -89,7 +93,8 @@ func newControllerDeployment(client kubernetes.Interface) *Controller {
 			}
 		},
 	})
-
+	
+	//return the created controller
 	return &Controller{
 		logger:       logrus.WithField("pkg", "kubewatch-deployment"),
 		clientset:    client,
@@ -98,6 +103,7 @@ func newControllerDeployment(client kubernetes.Interface) *Controller {
 	}
 }
 
+//the goroutine
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
@@ -112,8 +118,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 
 	c.logger.Info("Kubewatch controller synced and ready")
-
-	wait.Until(c.runWorker, 10*time.Second, stopCh)
+	//wait until the inform has changed. then run c.runWorker
+	wait.Until(c.runWorker, time.Second, stopCh)
 }
 
 func (c *Controller) HasSynced() bool {
@@ -129,7 +135,7 @@ func (c *Controller) runWorker() {
 		// continue looping
 	}
 }
-
+//go through all the items in the queue and do something
 func (c *Controller) processNextItem() bool {
 	key, quit := c.queue.Get()
 	if quit {
@@ -165,7 +171,7 @@ func (c *Controller) processItem(key string) error {
 	return nil
 }
 
-
+//get kube config
 func GetClientOutOfCluster() kubernetes.Interface {
 	config, err := buildOutOfClusterConfig()
 	if err != nil {
