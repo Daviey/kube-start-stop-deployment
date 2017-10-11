@@ -28,15 +28,17 @@ import (
 	"fmt"
 )
 
-
+//cron controller struct
 type CronJobController struct {
 	client    kubernetes.Interface
 	logger       *logrus.Entry
 }
 
 func main() {
+	
+	//get config
 	kubeClient := GetClientOutOfCluster()
-
+	//create controller
 	c := NewCronJobController(kubeClient)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -63,7 +65,7 @@ func NewCronJobController(kubeClient kubernetes.Interface) *CronJobController {
 func (jm *CronJobController) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	glog.Infof("Starting CronJob Manager")
-	// Check things every 10 second.
+	//Every 10 seconds run jm.syncAll()
 	go wait.Until(jm.syncAll, 10*time.Second, stopCh)
 	<-stopCh
 	glog.Infof("Shutting down CronJob Manager")
@@ -71,12 +73,13 @@ func (jm *CronJobController) Run(stopCh <-chan struct{}) {
 
 func (jm *CronJobController) syncAll() {
 	jm.logger.Infof("Time Now %s",time.Now().Format(time.RFC3339))
+	//get all deployments
 	deploymentList, err := jm.client.ExtensionsV1beta1().Deployments(meta_v1.NamespaceAll).List(meta_v1.ListOptions{})
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("can't list Jobs: %v", err))
 		return
 	}
-
+	//go through all deploymenst and see if they have start and stop times 
 	deployments := deploymentList.Items
 	jm.logger.Infof("Found %d deployments",len(deployments))
         for _, deployment := range deployments {
